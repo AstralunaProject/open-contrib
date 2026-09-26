@@ -1,0 +1,76 @@
+name: open-contrib
+description: Comment an onboarding roadmap on issues meant for new contributors.
+author: AstralunaProject
+branding:
+  icon: map
+  color: purple
+
+inputs:
+  github-token:
+    description: Token used to read the issue and post the comment. Needs `issues: write`.
+    default: ${{ github.token }}
+  issue-number:
+    description: Issue to analyze. Defaults to the issue from the triggering event.
+    default: ''
+  labels:
+    description: >-
+      Comma-separated labels that qualify an issue on `issues` events.
+      Ignored for manual runs, so any issue can be analyzed on demand.
+    default: good first issue,help wanted
+  provider:
+    description: Force a provider (`anthropic` or `ollama`). Auto-detected from available keys when empty.
+    default: ''
+  model:
+    description: Override the provider's default model.
+    default: ''
+  anthropic-api-key:
+    description: Anthropic API key. Without it the action targets `ollama-base-url`.
+    default: ''
+  ollama-base-url:
+    description: OpenAI-compatible Ollama endpoint reachable from the runner.
+    default: http://localhost:11434/v1
+  dry-run:
+    description: Build the roadmap prompt and print it to the job log without calling any provider or posting.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 22
+
+    - name: Build open-contrib
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --no-audit --no-fund && npm run build
+
+    - name: Analyze issue
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPEN_CONTRIB_PROVIDER: ${{ inputs.provider }}
+        OPEN_CONTRIB_MODEL: ${{ inputs.model }}
+        OLLAMA_BASE_URL: ${{ inputs.ollama-base-url }}
+        ISSUE_NUMBER: ${{ inputs.issue-number || github.event.issue.number }}
+        LABELS: ${{ inputs.labels }}
+        DRY_RUN: ${{ inputs.dry-run }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: |
+        if [[ -z "$ISSUE_NUMBER" ]]; then
+          echo "::error::No issue number: set the issue-number input or trigger on an issues event." >&2
+          exit 1
+        fi
+
+        args=(analyze --issue "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ISSUE_NUMBER" --root "$GITHUB_WORKSPACE")
+        if [[ "$EVENT_NAME" == "issues" && -n "$LABELS" ]]; then
+          args+=(--labels "$LABELS")
+        fi
+        if [[ "$DRY_RUN" == "true" ]]; then
+          args+=(--dry-run)
+        else
+          args+=(--comment)
+        fi
+
+        node "$GITHUB_ACTION_PATH/bin/open-contrib.js" "${args[@]}"
