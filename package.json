@@ -1,0 +1,45 @@
+{
+  "name": "open-contrib",
+  "version": "0.1.0",
+  "description": "Turns a GitHub issue into a practical onboarding roadmap grounded in the repository it belongs to.",
+  "keywords": [
+    "cli",
+    "github-action",
+    "onboarding",
+    "good-first-issue",
+    "open-source"
+  ],
+  "license": "MIT",
+  "author": "AstralunaProject",
+  "homepage": "https://github.com/AstralunaProject/open-contrib#readme",
+  "bugs": "https://github.com/AstralunaProject/open-contrib/issues",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AstralunaProject/open-contrib"
+  },
+  "type": "module",
+  "bin": {
+    "open-contrib": "bin/open-contrib.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.3"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc && node --test \".test-build/test/**/*.test.js\"",
+    "clean": "node -e \"for (const d of ['dist', '.test-build']) require('node:fs').rmSync(d, { recursive: true, force: true })\"",
+    "prepack": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^7.0.2"
+  }
+}
