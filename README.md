@@ -4,8 +4,6 @@ Turns a GitHub issue into a concrete onboarding roadmap for whoever is about to 
 
 It reads the issue, walks the local checkout, and asks a language model to connect the two. It runs as a CLI on your machine or as a GitHub Action that comments the roadmap on issues labeled `good first issue` or `help wanted`.
 
-> **Status:** pre-release. The provider layer (`src/core/engine`) is in place; the `analyze` pipeline is being wired up.
-
 ## Quickstart
 
 ```sh
@@ -31,17 +29,17 @@ open-contrib analyze --issue <url|path> [options]
 
 | Flag | Description |
 | --- | --- |
-| `--issue <url\|path>` | GitHub issue URL or a local Markdown/text file with the issue body. Required. |
+| `--issue <url\|path>` | GitHub issue URL, `owner/repo#123`, or a local Markdown file whose first `# heading` is the title. Required. |
 | `--root <dir>` | Repository to inspect. Defaults to the current directory. |
 | `--provider <name>` | `anthropic` or `ollama`. Auto-detected when omitted. |
 | `--model <name>` | Model to use instead of the provider default. |
-| `--labels <list>` | Comma-separated labels; exits quietly if the issue has none of them. |
-| `--comment` | Post the roadmap as a comment on the issue. Requires `GITHUB_TOKEN`. |
-| `--dry-run` | Parse the issue and codebase, print the prompt, and skip every network call. |
+| `--labels <list>` | Comma-separated labels, case-insensitive; exits `0` without output if the issue has none of them. |
+| `--comment` | Post the roadmap as a comment on the issue, or update the one posted by a previous run. Requires `GITHUB_TOKEN`. |
+| `--dry-run` | Scan the repository and print the exact prompt instead of calling a provider or GitHub. With an issue URL the body is not fetched, so pass a local file to preview the full prompt. |
 | `-h, --help` | Show usage. |
 | `-v, --version` | Show the installed version. |
 
-Exit codes: `0` success or skipped by `--labels`, `1` runtime failure (unreachable provider, API error, issue not found), `2` invalid usage.
+Exit codes: `0` success or skipped by `--labels`, `1` runtime failure (unreachable provider, GitHub or model API error), `2` invalid usage (bad flags, missing issue file or root). Set `OPEN_CONTRIB_DEBUG=1` to get stack traces for unexpected errors.
 
 The roadmap goes to `stdout`; progress and errors go to `stderr`, so `open-contrib analyze ... > ROADMAP.md` works as expected.
 
@@ -61,19 +59,22 @@ Selection order:
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Any OpenAI-compatible endpoint served by Ollama. |
 | `OPEN_CONTRIB_PROVIDER` | | Force `anthropic` or `ollama`. |
 | `OPEN_CONTRIB_MODEL` | `claude-sonnet-5` / `qwen2.5-coder:7b` | Override the model. |
-| `GITHUB_TOKEN` | | Read private issues and post comments. |
+| `GITHUB_TOKEN` / `GH_TOKEN` | | Read private issues, avoid anonymous rate limits, post comments. |
 
 Empty variables are treated as unset, so an unconfigured CI secret falls back to Ollama instead of failing authentication.
 
 ### What gets read
 
-The file walker never reads or sends:
+Inside a git work tree, files come from `git ls-files`, so `.gitignore` applies. Everywhere else the directory is walked without following symlinks. Either way, these are never read or sent:
 
-- `.git/`
-- `.env`, `.env.*`
-- private keys and certificates: `*.pem`, `*.key`
-- binaries, archives, images, fonts, and media
-- dependency and build output: `node_modules/`, `venv/`, `.venv/`, `target/`, `dist/`
+- VCS metadata: `.git/`, `.hg/`, `.svn/`
+- environment files: `.env`, `.env.*`
+- keys and credentials: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials.json`
+- binaries, archives, images (including SVG), fonts, media, office documents, databases, minified bundles and source maps
+- anything containing a NUL byte
+- dependencies and build output: `node_modules/`, `vendor/`, `venv/`, `.venv/`, `__pycache__/`, `target/`, `dist/`, `build/`, `out/`, `coverage/`, `.next/`, `.gradle/`, `.terraform/`
+
+The prompt carries the repository tree, the root README and manifests, and the files whose paths best match the issue text. A path quoted in the issue always wins. The context budget is about 24k characters for Ollama and 120k for Anthropic.
 
 With a local Ollama endpoint, no source code leaves your machine.
 
@@ -107,7 +108,7 @@ jobs:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`). A manual `workflow_dispatch` run analyzes any issue.
+On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`). A manual `workflow_dispatch` run analyzes any issue. Re-runs, such as an issue receiving both labels, edit the existing roadmap comment instead of adding another.
 
 | Input | Default | Description |
 | --- | --- | --- |
