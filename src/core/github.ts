@@ -29,7 +29,7 @@ interface RawIssue {
 interface RawComment {
   id: number;
   body?: string;
-  user: { login: string } | null;
+  user: { login: string; type?: string } | null;
 }
 
 export const COMMENT_MARKER = '<!-- open-contrib:roadmap -->';
@@ -56,7 +56,20 @@ function apiUrlFor(origin: string, env: Env): string {
   return `${origin}/api/v3`;
 }
 
-function failureHint(status: number, authenticated: boolean): string {
+function originOf(value: string | undefined): string | undefined {
+  if (!value || !URL.canParse(value)) return undefined;
+  const url = new URL(value);
+  return url.protocol === 'https:' ? url.origin : undefined;
+}
+
+// The token belongs to github.com or the configured Enterprise server; never hand it to arbitrary hosts.
+function trustedOrigins(env: Env): Set<string> {
+  const origins = ['https://api.github.com', originOf(env.GITHUB_API_URL), originOf(env.GITHUB_SERVER_URL)];
+  return new Set(origins.filter((origin): origin is string => origin !== undefined));
+}
+
+function failureHint(status: number, authenticated: boolean, withheld: boolean): string {
+  if (withheld) return ' GITHUB_TOKEN is only sent to api.github.com or the host in GITHUB_API_URL / GITHUB_SERVER_URL.';
   if ((status === 401 || status === 404) && !authenticated) return ' Set GITHUB_TOKEN if the repository is private.';
   if (status === 403 && !authenticated) return ' Unauthenticated requests are heavily rate limited; set GITHUB_TOKEN.';
   if (status === 403) return ' Check the token permissions (issues: write) and rate limits.';
@@ -72,7 +85,7 @@ export function parseIssueRef(input: string, env: Env = process.env): IssueRef |
 
   if (!URL.canParse(input)) return undefined;
   const url = new URL(input);
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return undefined;
+  if (url.protocol !== 'https:') return undefined;
 
   const match = /^\/([^/]+)\/([^/]+)\/(?:issues|pull)\/(\d+)\/?$/.exec(url.pathname);
   if (!match) return undefined;
@@ -86,9 +99,11 @@ export function formatRef({ owner, repo, number }: IssueRef): string {
 
 export class GitHubClient {
   readonly #token: string | undefined;
+  readonly #trusted: Set<string>;
 
-  constructor(token: string | undefined) {
+  constructor(token: string | undefined, env: Env = process.env) {
     this.#token = token;
+    this.#trusted = trustedOrigins(env);
   }
 
   async #request<T>(url: string, init: { method?: string; body?: unknown } = {}): Promise<T> {
@@ -97,7 +112,8 @@ export class GitHubClient {
       'x-github-api-version': '2022-11-28',
       'user-agent': 'open-contrib',
     };
-    if (this.#token) headers.authorization = `Bearer ${this.#token}`;
+    const authenticated = this.#token !== undefined && this.#trusted.has(new URL(url).origin);
+    if (authenticated) headers.authorization = `Bearer ${this.#token}`;
     if (init.body !== undefined) headers['content-type'] = 'application/json';
 
     let response: Response;
@@ -114,7 +130,7 @@ export class GitHubClient {
 
     if (!response.ok) {
       const detail = (await response.text()).trim().slice(0, 300);
-      const hint = failureHint(response.status, this.#token !== undefined);
+      const hint = failureHint(response.status, authenticated, this.#token !== undefined && !authenticated);
       throw new GitHubError(`GitHub API ${response.status} for ${url}.${hint} ${detail}`.trim(), response.status);
     }
     return (await response.json()) as T;
@@ -153,9 +169,12 @@ export class GitHubClient {
   }
 
   // Label events fire once per label, so re-runs edit the previous roadmap instead of stacking new ones.
+  // Anyone can paste the marker, so only a bot-authored roadmap is ever edited.
   async upsertComment(ref: IssueRef, markdown: string): Promise<string> {
     const body = `${COMMENT_MARKER}\n${markdown}`;
-    const existing = (await this.#comments(ref)).find((comment) => comment.body?.includes(COMMENT_MARKER));
+    const existing = (await this.#comments(ref)).find(
+      (comment) => comment.user?.type === 'Bot' && comment.body?.startsWith(COMMENT_MARKER),
+    );
     const base = `${ref.apiUrl}/repos/${ref.owner}/${ref.repo}/issues`;
 
     const saved = existing

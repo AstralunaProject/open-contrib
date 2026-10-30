@@ -59,7 +59,7 @@ Selection order:
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Any OpenAI-compatible endpoint served by Ollama. |
 | `OPEN_CONTRIB_PROVIDER` | | Force `anthropic` or `ollama`. |
 | `OPEN_CONTRIB_MODEL` | `claude-sonnet-5` / `qwen2.5-coder:7b` | Override the model. |
-| `GITHUB_TOKEN` / `GH_TOKEN` | | Read private issues, avoid anonymous rate limits, post comments. |
+| `GITHUB_TOKEN` / `GH_TOKEN` | | Read private issues, avoid anonymous rate limits, post comments. Only sent over HTTPS to `api.github.com` or the host in `GITHUB_API_URL` / `GITHUB_SERVER_URL`. |
 
 Empty variables are treated as unset, so an unconfigured CI secret falls back to Ollama instead of failing authentication.
 
