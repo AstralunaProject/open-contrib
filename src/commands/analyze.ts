@@ -43,7 +43,7 @@ export async function analyze(options: AnalyzeOptions): Promise<AnalyzeResult> {
   if (postComment && !token) throw new UsageError('--comment needs GITHUB_TOKEN with issues: write');
 
   const engine = resolveEngine({ provider: options.provider, model: options.model, dryRun, env });
-  const github = new GitHubClient(token);
+  const github = new GitHubClient(token, env);
   const issue = await loadIssue(options.issue, { github, dryRun });
 
   if (options.comment && !issue.ref) throw new UsageError('--comment requires a GitHub issue URL');

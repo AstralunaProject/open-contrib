@@ -77,7 +77,7 @@ describe('AnthropicClient', () => {
     id: 'msg_1',
     type: 'message',
     role: 'assistant',
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     content,
     stop_reason: stopReason,
     stop_sequence: null,
@@ -117,5 +117,19 @@ describe('AnthropicClient', () => {
 
     const client = new AnthropicClient({ apiKey: 'sk-test', baseUrl: 'http://anthropic.test' });
     await assert.rejects(client.complete(request), /declined/);
+  });
+
+  it('fails instead of returning a roadmap cut off at the token limit', async (t) => {
+    const fetchMock = t.mock.method(globalThis, 'fetch', async () =>
+      json(message([{ type: 'text', text: 'step 1\nstep' }], 'max_tokens')),
+    );
+
+    const client = new AnthropicClient({ apiKey: 'sk-test', baseUrl: 'http://anthropic.test' });
+    await assert.rejects(client.complete(request), (error: unknown) => {
+      assert.ok(error instanceof EngineError);
+      assert.match(error.message, /16000-token output limit/);
+      return true;
+    });
+    assert.equal(JSON.parse(String(fetchMock.mock.calls[0]?.arguments[1]?.body)).max_tokens, 16_000);
   });
 });

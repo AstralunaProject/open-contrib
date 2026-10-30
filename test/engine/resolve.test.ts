@@ -11,6 +11,7 @@ import {
   resolveEngine,
   resolveSettings,
 } from '../../src/core/engine/index.js';
+import { UsageError } from '../../src/errors.js';
 
 describe('resolveSettings', () => {
   it('falls back to local Ollama when no cloud key is present', () => {
@@ -56,7 +57,11 @@ describe('resolveSettings', () => {
   });
 
   it('rejects unknown providers instead of guessing', () => {
-    assert.throws(() => resolveSettings({ env: { OPEN_CONTRIB_PROVIDER: 'gemini' } }), /Unknown provider "gemini"/);
+    assert.throws(() => resolveSettings({ env: { OPEN_CONTRIB_PROVIDER: 'gemini' } }), (error: unknown) => {
+      assert.ok(error instanceof UsageError);
+      assert.match(error.message, /Unknown provider "gemini"/);
+      return true;
+    });
   });
 });
 

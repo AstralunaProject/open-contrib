@@ -58,18 +58,19 @@ Selection order:
 | `ANTHROPIC_BASE_URL` | SDK default | Route through a proxy or gateway. |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Any OpenAI-compatible endpoint served by Ollama. |
 | `OPEN_CONTRIB_PROVIDER` | | Force `anthropic` or `ollama`. |
-| `OPEN_CONTRIB_MODEL` | `claude-sonnet-5` / `qwen2.5-coder:7b` | Override the model. |
-| `GITHUB_TOKEN` / `GH_TOKEN` | | Read private issues, avoid anonymous rate limits, post comments. |
+| `OPEN_CONTRIB_MODEL` | `claude-sonnet-5-5` / `qwen2.5-coder:7b` | Override the model. |
+| `GITHUB_TOKEN` / `GH_TOKEN` | | Read private issues, avoid anonymous rate limits, post comments. Only sent over HTTPS to `api.github.com` or the host in `GITHUB_API_URL` / `GITHUB_SERVER_URL`. |
 
 Empty variables are treated as unset, so an unconfigured CI secret falls back to Ollama instead of failing authentication.
 
 ### What gets read
 
-Inside a git work tree, files come from `git ls-files`, so `.gitignore` applies. Everywhere else the directory is walked without following symlinks. Either way, these are never read or sent:
+Inside a git work tree, only tracked files are read (`git ls-files --cached`), so untracked files in the workspace and anything in `.gitignore` stay out. Outside a work tree, or when git is not installed, the directory is walked without following symlinks. Any other git failure, such as a "dubious ownership" refusal, stops the run instead of falling back to the walk. Either way, these are never read or sent (matched case-insensitively):
 
 - VCS metadata: `.git/`, `.hg/`, `.svn/`
-- environment files: `.env`, `.env.*`
-- keys and credentials: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials.json`
+- environment files: `.env`, `.env.*`, `.envrc`
+- keys and credentials: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.ppk`, `*.jks`, `*.keystore`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials`, `credentials.json`, `gha-creds-*.json`, `service-account*.json`, `kubeconfig`, `.docker/config.json`, and anything under `.ssh/`, `.aws/`, `.kube/`
+- Terraform state and variables: `*.tfstate`, `*.tfstate.*`, `*.tfvars`
 - binaries, archives, images (including SVG), fonts, media, office documents, databases, minified bundles and source maps
 - anything containing a NUL byte
 - dependencies and build output: `node_modules/`, `vendor/`, `venv/`, `.venv/`, `__pycache__/`, `target/`, `dist/`, `build/`, `out/`, `coverage/`, `.next/`, `.gradle/`, `.terraform/`
@@ -97,18 +98,24 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: open-contrib-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: true
+
 jobs:
   roadmap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: AstralunaProject/open-contrib@main
+      - uses: AstralunaProject/open-contrib@<commit-sha>
         with:
           issue-number: ${{ inputs.issue }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`). A manual `workflow_dispatch` run analyzes any issue. Re-runs, such as an issue receiving both labels, edit the existing roadmap comment instead of adding another.
+Pin the action to a release tag or, better, a full commit SHA rather than `@main`: it runs with your `issues: write` token and provider key.
+
+On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`); on `labeled` events the label just added must itself be one of them, so unrelated labels do not trigger a new run. A manual `workflow_dispatch` run analyzes any issue. Re-runs, such as an issue receiving both labels, edit the existing roadmap comment instead of adding another, and the `concurrency` group cancels a run superseded by a newer one for the same issue.
 
 | Input | Default | Description |
 | --- | --- | --- |

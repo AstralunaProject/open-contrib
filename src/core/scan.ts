@@ -34,15 +34,28 @@ const IGNORED_DIRS = new Set([
   '.vscode',
 ]);
 
+const SECRET_DIRS = new Set(['.ssh', '.aws', '.kube']);
+
 const SECRET_NAMES = new Set([
   '.npmrc',
   '.pypirc',
   '.netrc',
+  '.envrc',
   '.git-credentials',
+  'credentials',
   'credentials.json',
+  'kubeconfig',
 ]);
 
-const SECRET_EXTENSIONS = new Set(['.pem', '.key', '.p12', '.pfx', '.jks', '.keystore', '.kdbx', '.gpg', '.asc']);
+const SECRET_PATTERNS = [
+  /^id_(rsa|dsa|ecdsa|ed25519)/,
+  /^gha-creds-.*\.json$/,
+  /^service-account.*\.json$/,
+  /\.tfstate(\..+)?$/,
+  /\.tfvars$/,
+];
+
+const SECRET_EXTENSIONS = new Set(['.pem', '.key', '.p12', '.pfx', '.ppk', '.jks', '.keystore', '.kdbx', '.gpg', '.asc']);
 
 const BINARY_EXTENSIONS = new Set(
   [
@@ -63,20 +76,22 @@ export interface ScanResult {
 }
 
 export function isSafePath(relativePath: string): boolean {
-  const segments = relativePath.split('/');
+  const segments = relativePath.toLowerCase().split('/');
   const name = segments.at(-1);
   if (!name) return false;
-  if (segments.slice(0, -1).some((segment) => IGNORED_DIRS.has(segment))) return false;
+  const dirs = segments.slice(0, -1);
+  if (dirs.some((segment) => IGNORED_DIRS.has(segment) || SECRET_DIRS.has(segment))) return false;
+  if (dirs.at(-1) === '.docker' && name === 'config.json') return false;
   if (name === '.env' || name.startsWith('.env.')) return false;
-  if (SECRET_NAMES.has(name) || /^id_(rsa|dsa|ecdsa|ed25519)/.test(name)) return false;
+  if (SECRET_NAMES.has(name) || SECRET_PATTERNS.some((pattern) => pattern.test(name))) return false;
 
-  const extension = path.extname(name).toLowerCase();
+  const extension = path.extname(name);
   if (SECRET_EXTENSIONS.has(extension) || BINARY_EXTENSIONS.has(extension)) return false;
   return !name.endsWith('.min.js') && !name.endsWith('.map');
 }
 
 async function gitFiles(root: string): Promise<string[]> {
-  const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+  const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--cached'], {
     cwd: root,
     maxBuffer: 64 * 1024 * 1024,
     timeout: 30_000,
@@ -84,7 +99,7 @@ async function gitFiles(root: string): Promise<string[]> {
   return stdout.split('\0').filter(Boolean);
 }
 
-async function walkFiles(root: string): Promise<string[]> {
+async function walkFiles(root: string, limit: number): Promise<string[]> {
   const files: string[] = [];
   const pending = [''];
 
@@ -93,26 +108,34 @@ async function walkFiles(root: string): Promise<string[]> {
       const relative = dir ? `${dir}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
         if (!IGNORED_DIRS.has(entry.name)) pending.push(relative);
-      } else if (entry.isFile()) {
+      } else if (entry.isFile() && isSafePath(relative)) {
         files.push(relative);
-        if (files.length > MAX_FILES) return files;
+        if (files.length > limit) return files;
       }
     }
   }
   return files;
 }
 
-// `git ls-files` honors .gitignore, which keeps generated and local-only files out.
+function isMissingGit(error: NodeJS.ErrnoException & { stderr?: string }): boolean {
+  return error.code === 'ENOENT' || /not a git repository/i.test(error.stderr ?? '');
+}
+
+// Tracked files only: untracked ones in a CI workspace are often credentials written by earlier steps.
 // Outside a work tree (or without git installed) a plain walk with the fixed rules is the best we have.
-async function listFiles(root: string): Promise<string[]> {
+// Any other git failure must not silently widen the scan past .gitignore.
+async function listFiles(root: string, limit: number): Promise<string[]> {
   try {
     return await gitFiles(root);
-  } catch {
-    return walkFiles(root);
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { stderr?: string };
+    if (isMissingGit(failure)) return walkFiles(root, limit);
+    const detail = failure.stderr?.trim() || failure.message;
+    throw new Error(`git ls-files failed in ${root}: ${detail}`, { cause: error });
   }
 }
 
-export async function scanRepository(root: string): Promise<ScanResult> {
-  const files = (await listFiles(root)).filter(isSafePath).sort();
-  return { files: files.slice(0, MAX_FILES), truncated: files.length > MAX_FILES };
+export async function scanRepository(root: string, limit = MAX_FILES): Promise<ScanResult> {
+  const files = (await listFiles(root, limit)).filter(isSafePath).sort();
+  return { files: files.slice(0, limit), truncated: files.length > limit };
 }

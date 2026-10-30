@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { analyze } from './commands/analyze.js';
-import { EngineError, parseProvider, type ProviderName } from './core/engine/index.js';
+import { EngineError, parseProvider } from './core/engine/index.js';
 import { GitHubError } from './core/github.js';
 import { UsageError } from './errors.js';
 
@@ -74,14 +74,7 @@ async function run(argv: string[]): Promise<number> {
   if (rest.length > 0) throw new UsageError(`Unexpected argument "${rest[0]}"`);
   if (!values.issue) throw new UsageError('Missing --issue <url|path>');
 
-  let provider: ProviderName | undefined;
-  if (values.provider !== undefined) {
-    try {
-      provider = parseProvider(values.provider);
-    } catch (error) {
-      throw new UsageError((error as Error).message);
-    }
-  }
+  const provider = values.provider === undefined ? undefined : parseProvider(values.provider);
 
   const labels = values.labels
     ?.split(',')
