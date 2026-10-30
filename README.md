@@ -65,11 +65,12 @@ Empty variables are treated as unset, so an unconfigured CI secret falls back to
 
 ### What gets read
 
-Inside a git work tree, files come from `git ls-files`, so `.gitignore` applies. Everywhere else the directory is walked without following symlinks. Either way, these are never read or sent:
+Inside a git work tree, only tracked files are read (`git ls-files --cached`), so untracked files in the workspace and anything in `.gitignore` stay out. Outside a work tree, or when git is not installed, the directory is walked without following symlinks. Any other git failure, such as a "dubious ownership" refusal, stops the run instead of falling back to the walk. Either way, these are never read or sent (matched case-insensitively):
 
 - VCS metadata: `.git/`, `.hg/`, `.svn/`
-- environment files: `.env`, `.env.*`
-- keys and credentials: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials.json`
+- environment files: `.env`, `.env.*`, `.envrc`
+- keys and credentials: `*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.ppk`, `*.jks`, `*.keystore`, `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `credentials`, `credentials.json`, `gha-creds-*.json`, `service-account*.json`, `kubeconfig`, `.docker/config.json`, and anything under `.ssh/`, `.aws/`, `.kube/`
+- Terraform state and variables: `*.tfstate`, `*.tfstate.*`, `*.tfvars`
 - binaries, archives, images (including SVG), fonts, media, office documents, databases, minified bundles and source maps
 - anything containing a NUL byte
 - dependencies and build output: `node_modules/`, `vendor/`, `venv/`, `.venv/`, `__pycache__/`, `target/`, `dist/`, `build/`, `out/`, `coverage/`, `.next/`, `.gradle/`, `.terraform/`

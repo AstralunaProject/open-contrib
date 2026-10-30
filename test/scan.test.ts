@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { symlink } from 'node:fs/promises';
+import { symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { isSafePath, scanRepository } from '../src/core/scan.js';
@@ -30,6 +30,21 @@ describe('isSafePath', () => {
       'dist/index.js',
       'static/app.min.js',
       'static/app.js.map',
+      '.envrc',
+      'infra/terraform.tfstate',
+      'infra/terraform.tfstate.backup',
+      'infra/prod.auto.tfvars',
+      'gha-creds-1a2b3c.json',
+      'keys/service-account-prod.json',
+      '.aws/credentials',
+      'deploy/kubeconfig',
+      '.kube/config',
+      '.ssh/known_hosts',
+      '.docker/config.json',
+      'putty/server.ppk',
+      'packages/web/.NPMRC',
+      'Infra/Terraform.TFSTATE',
+      'certs/Server.PEM',
     ]) {
       assert.equal(isSafePath(file), false, file);
     }
@@ -52,7 +67,19 @@ describe('scanRepository', () => {
     assert.equal(truncated, false);
   });
 
-  it('honors .gitignore inside a git work tree', async (t) => {
+  it('flags truncation only when safe files exceed the limit', async (t) => {
+    const binaries = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`img/${i}.png`, '']));
+
+    const fits = await fixture(t, { ...binaries, 'src/a.ts': '', 'src/b.ts': '' });
+    assert.deepEqual(await scanRepository(fits, 2), { files: ['src/a.ts', 'src/b.ts'], truncated: false });
+
+    const overflows = await fixture(t, { ...binaries, 'src/a.ts': '', 'src/b.ts': '', 'src/c.ts': '' });
+    const { files, truncated } = await scanRepository(overflows, 2);
+    assert.equal(files.length, 2);
+    assert.equal(truncated, true);
+  });
+
+  it('lists tracked files only inside a git work tree', async (t) => {
     const root = await fixture(t, {
       '.gitignore': 'generated/\n',
       'generated/schema.ts': 'export {}',
@@ -65,8 +92,23 @@ describe('scanRepository', () => {
       t.skip('git is not installed');
       return;
     }
+    execFileSync('git', ['add', '.'], { cwd: root });
+    await writeFile(path.join(root, 'notes.txt'), 'untracked');
 
     const { files } = await scanRepository(root);
     assert.deepEqual(files, ['.gitignore', 'src/app.ts']);
+  });
+
+  it('fails instead of walking past .gitignore when git itself errors', async (t) => {
+    const root = await fixture(t, { '.gitignore': 'secret/\n', 'secret/dump.sql': '', 'src/app.ts': '' });
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: root });
+    } catch {
+      t.skip('git is not installed');
+      return;
+    }
+    execFileSync('git', ['config', 'core.repositoryformatversion', '99'], { cwd: root });
+
+    await assert.rejects(scanRepository(root), /git ls-files failed/);
   });
 });
