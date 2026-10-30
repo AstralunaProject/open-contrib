@@ -98,18 +98,24 @@ permissions:
   contents: read
   issues: write
 
+concurrency:
+  group: open-contrib-${{ github.event.issue.number || inputs.issue }}
+  cancel-in-progress: true
+
 jobs:
   roadmap:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: AstralunaProject/open-contrib@main
+      - uses: AstralunaProject/open-contrib@<commit-sha>
         with:
           issue-number: ${{ inputs.issue }}
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`). A manual `workflow_dispatch` run analyzes any issue. Re-runs, such as an issue receiving both labels, edit the existing roadmap comment instead of adding another.
+Pin the action to a release tag or, better, a full commit SHA rather than `@main`: it runs with your `issues: write` token and provider key.
+
+On `issues` events the action only runs for issues carrying one of `labels` (default `good first issue,help wanted`); on `labeled` events the label just added must itself be one of them, so unrelated labels do not trigger a new run. A manual `workflow_dispatch` run analyzes any issue. Re-runs, such as an issue receiving both labels, edit the existing roadmap comment instead of adding another, and the `concurrency` group cancels a run superseded by a newer one for the same issue.
 
 | Input | Default | Description |
 | --- | --- | --- |
