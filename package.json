@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "description": "Turns a GitHub issue into a practical onboarding roadmap grounded in the repository it belongs to.",
   "keywords": [
-    "cli",
     "github-action",
+    "cli",
     "onboarding",
     "good-first-issue",
-    "open-source"
+    "help-wanted",
+    "new-contributors",
+    "open-source",
+    "maintainers",
+    "issue-triage",
+    "developer-experience"
   ],
   "license": "MIT",
   "author": "AstralunaProject",
