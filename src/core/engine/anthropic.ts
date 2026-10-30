@@ -1,9 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { EngineError, type CompletionRequest, type EngineClient } from './types.js';
 
-export const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-5';
+export const ANTHROPIC_DEFAULT_MODEL = 'claude-sonnet-5-5';
 
-const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 16_000;
 
 export interface AnthropicClientOptions {
   apiKey: string;
@@ -47,6 +47,12 @@ export class AnthropicClient implements EngineClient {
 
     if (message.stop_reason === 'refusal') {
       throw new EngineError('anthropic', `Model ${this.model} declined to analyze this issue`);
+    }
+    if (message.stop_reason === 'max_tokens') {
+      throw new EngineError(
+        'anthropic',
+        `Model ${this.model} hit the ${maxTokens}-token output limit; the roadmap would be truncated`,
+      );
     }
 
     const text = message.content

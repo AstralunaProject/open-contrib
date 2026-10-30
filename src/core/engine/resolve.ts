@@ -1,4 +1,5 @@
 import { ANTHROPIC_DEFAULT_MODEL, AnthropicClient } from './anthropic.js';
+import { UsageError } from '../../errors.js';
 import { DryRunClient } from './dry-run.js';
 import { OLLAMA_DEFAULT_BASE_URL, OLLAMA_DEFAULT_MODEL, OllamaClient } from './ollama.js';
 import { EngineError, PROVIDERS, isProvider, type EngineClient, type ProviderName } from './types.js';
@@ -25,7 +26,7 @@ export function readEnv(env: EngineEnv, key: string): string | undefined {
 export function parseProvider(value: string): ProviderName {
   const normalized = value.trim().toLowerCase();
   if (!isProvider(normalized)) {
-    throw new Error(`Unknown provider "${value}". Expected one of: ${PROVIDERS.join(', ')}`);
+    throw new UsageError(`Unknown provider "${value}". Expected one of: ${PROVIDERS.join(', ')}`);
   }
   return normalized;
 }
