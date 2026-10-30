@@ -4,6 +4,8 @@ Turns a GitHub issue into a concrete onboarding roadmap for whoever is about to 
 
 It reads the issue, walks the local checkout, and asks a language model to connect the two. It runs as a CLI on your machine or as a GitHub Action that comments the roadmap on issues labeled `good first issue` or `help wanted`.
 
+Built for maintainers who want more first-time contributors to actually finish their first PR, and for newcomers who want to know where to start in an unfamiliar codebase.
+
 ## Quickstart
 
 ```sh
