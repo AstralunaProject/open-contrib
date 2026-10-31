@@ -24,3 +24,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Bundled action matches the source
+        run: |
+          npm run bundle
+          git diff --exit-code -- action/ || { echo "::error::action/index.js is stale: run npm run bundle and commit it."; exit 1; }

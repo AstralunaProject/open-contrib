@@ -38,13 +38,15 @@
     "typecheck": "tsc --noEmit",
     "test": "tsc && node --test \".test-build/test/**/*.test.js\"",
     "clean": "node -e \"for (const d of ['dist', '.test-build']) require('node:fs').rmSync(d, { recursive: true, force: true })\"",
-    "prepack": "npm run clean && npm run build"
+    "prepack": "npm run clean && npm run build",
+    "bundle": "esbuild src/action-main.ts --bundle --platform=node --format=esm --target=node24 --legal-comments=eof --outfile=action/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
+    "esbuild": "^0.25.12",
     "typescript": "^7.0.2"
   }
 }
