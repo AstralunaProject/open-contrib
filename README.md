@@ -130,6 +130,8 @@ On `issues` events the action only runs for issues carrying one of `labels` (def
 | `ollama-base-url` | `http://localhost:11434/v1` | Ollama endpoint reachable from the runner. |
 | `dry-run` | `false` | Print the prompt to the job log instead of calling a provider or commenting. |
 
+The action ships prebuilt in `action/index.js` and runs on the runner's own Node.js 24, with no install or build step. Self-hosted runners need a runner version with `node24` support.
+
 Hosted runners have no GPU, so Ollama in CI is only practical on self-hosted runners or with an Ollama server on your network.
 
 ## Development
@@ -141,7 +143,10 @@ npm install
 npm run typecheck
 npm test
 npm run build
+npm run bundle   # regenerates action/index.js; commit it with the source change
 ```
+
+CI fails when `action/index.js` does not match the source.
 
 ## License
 
